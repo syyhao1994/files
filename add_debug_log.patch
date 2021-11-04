@@ -1,0 +1,415 @@
+diff --git a/src/core/device.c b/src/core/device.c
+index 8f30c4e..18aa759 100644
+--- a/src/core/device.c
++++ b/src/core/device.c
+@@ -134,12 +134,14 @@ static int device_load(Unit *u) {
+ static void device_set_state(Device *d, DeviceState state) {
+         DeviceState old_state;
+         assert(d);
++        log_info("syy into device_set_state");
+ 
+         if (d->state != state)
+                 bus_unit_send_pending_change_signal(UNIT(d), false);
+ 
+         old_state = d->state;
+         d->state = state;
++        
+ 
+         if (state == DEVICE_DEAD)
+                 device_unset_sysfs(d);
+@@ -155,6 +157,7 @@ static int device_coldplug(Unit *u) {
+ 
+         assert(d);
+         assert(d->state == DEVICE_DEAD);
++        log_info("syy into device_coldplug, the d->deserialized_state is %d,the d->state is %d, the d->found is %d, the d->deserialized_found is %d",d->deserialized_state,d->state,d->found,d->deserialized_found);
+ 
+         /* First, let's put the deserialized state and found mask into effect, if we have it. */
+ 
+@@ -174,6 +177,7 @@ static void device_catchup(Unit *u) {
+         assert(d);
+ 
+         /* Second, let's update the state with the enumerated state if it's different */
++        log_info("syy the unit is %s, The enumerated_found is %d, the found is %d",u->id, d->enumerated_found, d->found);
+         if (d->enumerated_found == d->found)
+                 return;
+ 
+@@ -647,6 +651,7 @@ static int device_process_new(Manager *m, sd_device *dev) {
+ 
+ static void device_found_changed(Device *d, DeviceFound previous, DeviceFound now) {
+         assert(d);
++        log_info("syy into device_found_changed, the previous is %d,the now is %d",previous, now);
+ 
+         /* Didn't exist before, but does now? if so, generate a new invocation ID for it */
+         if (previous == DEVICE_NOT_FOUND && now != DEVICE_NOT_FOUND)
+@@ -659,13 +664,16 @@ static void device_found_changed(Device *d, DeviceFound previous, DeviceFound no
+                 /* If the device has not been seen by udev yet, but is now referenced by the kernel, then we assume the
+                  * kernel knows it now, and udev might soon too. */
+                 device_set_state(d, DEVICE_TENTATIVE);
+-        else
++        else {
+                 /* If nobody sees the device, or if the device was previously seen by udev and now is only referenced
+                  * from the kernel, then we consider the device is gone, the kernel just hasn't noticed it yet. */
++                log_info("syy device_found_changed to dead");
+                 device_set_state(d, DEVICE_DEAD);
++        }
+ }
+ 
+ static void device_update_found_one(Device *d, DeviceFound found, DeviceFound mask) {
++        log_info("syy into device_update_found_one,the device is %s,the d->found is %d,the d->enumerated_found is %d, the found is %d, the mask is %d",d->sysfs, d->found,d->enumerated_found, found, mask);
+         Manager *m;
+ 
+         assert(d);
+@@ -686,13 +694,17 @@ static void device_update_found_one(Device *d, DeviceFound found, DeviceFound ma
+                 d->found = n;
+ 
+                 device_found_changed(d, previous, n);
+-        } else
++        } else {
+                 /* We aren't running yet, let's apply the new mask to the shadow variable instead, which we'll apply as
+                  * soon as we catch-up with the state. */
++                log_info("syy into else");
+                 d->enumerated_found = (d->enumerated_found & ~mask) | (found & mask);
++        }
++        log_info("syy out device_update_found_one,the d->enumerated_found is %d",d->enumerated_found);
+ }
+ 
+ static void device_update_found_by_sysfs(Manager *m, const char *sysfs, DeviceFound found, DeviceFound mask) {
++        log_info("syy into device_update_found_by_sysfs, the found is %d, the mask is %d, the sysfs is %s",found, mask, sysfs);
+         Device *d, *l, *n;
+ 
+         assert(m);
+@@ -702,8 +714,11 @@ static void device_update_found_by_sysfs(Manager *m, const char *sysfs, DeviceFo
+                 return;
+ 
+         l = hashmap_get(m->devices_by_sysfs, sysfs);
+-        LIST_FOREACH_SAFE(same_sysfs, d, n, l)
++        LIST_FOREACH_SAFE(same_sysfs, d, n, l) {
++                log_info("syy into device_update_found_one from device_update_found_by_sysfs");
+                 device_update_found_one(d, found, mask);
++        }
++        log_info("syy out device_update_found_by_sysfs");
+ }
+ 
+ static int device_update_found_by_name(Manager *m, const char *path, DeviceFound found, DeviceFound mask) {
+@@ -725,7 +740,9 @@ static int device_update_found_by_name(Manager *m, const char *path, DeviceFound
+         if (!u)
+                 return 0;
+ 
++        log_info("syy into device_update_found_one from device_update_found_by_name, the u->id is %s",u->id);
+         device_update_found_one(DEVICE(u), found, mask);
++        log_info("syy out device_update_found_one fromde vice_update_found_by_name");
+         return 0;
+ }
+ 
+@@ -734,8 +751,10 @@ static bool device_is_ready(sd_device *dev) {
+ 
+         assert(dev);
+ 
+-        if (device_is_renaming(dev) > 0)
++        if (device_is_renaming(dev) > 0) {
++                log_info("syy device is renaming");
+                 return false;
++        }
+ 
+         if (sd_device_get_property_value(dev, "SYSTEMD_READY", &ready) < 0)
+                 return true;
+@@ -808,6 +827,7 @@ static void device_shutdown(Manager *m) {
+ }
+ 
+ static void device_enumerate(Manager *m) {
++        log_info("syy into device_enumerate");
+         _cleanup_(sd_device_enumerator_unrefp) sd_device_enumerator *e = NULL;
+         sd_device *dev;
+         int r;
+@@ -860,15 +880,19 @@ static void device_enumerate(Manager *m) {
+         FOREACH_DEVICE(e, dev) {
+                 const char *sysfs;
+ 
+-                if (!device_is_ready(dev))
++                if (!device_is_ready(dev)) {
++                        log_info("syy return as the device_is_ready false");
+                         continue;
++                }
+ 
+                 (void) device_process_new(m, dev);
+ 
+                 if (sd_device_get_syspath(dev, &sysfs) < 0)
+                         continue;
+ 
++                log_info("syy into device_update_found_by_sysfs from device_enumerate");
+                 device_update_found_by_sysfs(m, sysfs, DEVICE_FOUND_UDEV, DEVICE_FOUND_UDEV);
++                log_info("syy out device_update_found_by_sysfs from device_enumerate");
+         }
+ 
+         return;
+@@ -903,12 +927,14 @@ static int device_dispatch_io(sd_device_monitor *monitor, sd_device *dev, void *
+ 
+         assert(m);
+         assert(dev);
++        
+ 
+         r = sd_device_get_syspath(dev, &sysfs);
+         if (r < 0) {
+                 log_device_error_errno(dev, r, "Failed to get device sys path: %m");
+                 return 0;
+         }
++        log_info("syy into device_dispatch_io, the sysfs is %s, the action is %d", sysfs, action);
+ 
+         r = device_get_action(dev, &action);
+         if (r < 0) {
+@@ -930,7 +956,9 @@ static int device_dispatch_io(sd_device_monitor *monitor, sd_device *dev, void *
+                 /* If we get notified that a device was removed by
+                  * udev, then it's completely gone, hence unset all
+                  * found bits */
++                log_info("syy into device_update_found_by_sysfs from device_dispatch_io, DEVICE_ACTION_REMOVE");
+                 device_update_found_by_sysfs(m, sysfs, 0, DEVICE_FOUND_UDEV|DEVICE_FOUND_MOUNT|DEVICE_FOUND_SWAP);
++                log_info("syy out device_update_found_by_sysfs from device_dispatch_io, DEVICE_ACTION_REMOVE");
+ 
+         } else if (device_is_ready(dev)) {
+ 
+@@ -943,14 +971,17 @@ static int device_dispatch_io(sd_device_monitor *monitor, sd_device *dev, void *
+                 manager_dispatch_load_queue(m);
+ 
+                 /* The device is found now, set the udev found bit */
++                log_info("syy into device_update_found_by_sysfs from device_dispatch_io, device_is_ready");
+                 device_update_found_by_sysfs(m, sysfs, DEVICE_FOUND_UDEV, DEVICE_FOUND_UDEV);
++                log_info("syy out device_update_found_by_sysfs from device_dispatch_io, device_is_ready");
+ 
+         } else {
+                 /* The device is nominally around, but not ready for
+                  * us. Hence unset the udev bit, but leave the rest
+                  * around. */
+-
++                log_info("syy into device_update_found_by_sysfs from device_dispatch_io, else");
+                 device_update_found_by_sysfs(m, sysfs, 0, DEVICE_FOUND_UDEV);
++                log_info("syy out device_update_found_by_sysfs from device_dispatch_io, else");
+         }
+ 
+         return 0;
+@@ -1044,6 +1075,7 @@ void device_found_node(Manager *m, const char *node, DeviceFound found, DeviceFo
+         }
+ 
+         /* Update the device unit's state, should it exist */
++        log_info("syy into device_update_found_by_name from device_found_node");
+         (void) device_update_found_by_name(m, node, found, mask);
+ }
+ 
+diff --git a/src/core/manager.c b/src/core/manager.c
+index 9e47b49..3f1af75 100644
+--- a/src/core/manager.c
++++ b/src/core/manager.c
+@@ -1703,8 +1703,11 @@ int manager_startup(Manager *m, FILE *serialization, FDSet *fds) {
+ 
+                 /* First, enumerate what we can from all config files */
+                 dual_timestamp_get(m->timestamps + manager_timestamp_initrd_mangle(MANAGER_TIMESTAMP_UNITS_LOAD_START));
++                log_info("syy into manager_enumerate_perpetual from manager_startup");
+                 manager_enumerate_perpetual(m);
++                log_info("syy into manager_enumerate from manager_startup");
+                 manager_enumerate(m);
++                log_info("syy out manager_enumerate from manager_startup");
+                 dual_timestamp_get(m->timestamps + manager_timestamp_initrd_mangle(MANAGER_TIMESTAMP_UNITS_LOAD_FINISH));
+ 
+                 /* Second, deserialize if there is something to deserialize */
+@@ -1755,8 +1758,9 @@ int manager_startup(Manager *m, FILE *serialization, FDSet *fds) {
+                          * reload is finished */
+                         m->send_reloading_done = true;
+         }
+-
++        log_info("syy into manager ready from manager_startup");
+         manager_ready(m);
++        log_info("syy out manager ready from manager_startup");
+ 
+         return 0;
+ }
+@@ -3587,8 +3591,11 @@ int manager_reload(Manager *m) {
+         manager_build_unit_path_cache(m);
+ 
+         /* First, enumerate what we can from kernel and suchlike */
++        log_info("syy into manager_enumerate_perpetual from daemon reload");
+         manager_enumerate_perpetual(m);
++        log_info("syy into manager_enumerate from daemon reload");
+         manager_enumerate(m);
++        log_info("syy over manager_enumerate from daemon reload");
+ 
+         /* Second, deserialize our stored data */
+         r = manager_deserialize(m, f, fds);
+@@ -3603,8 +3610,11 @@ int manager_reload(Manager *m) {
+         (void) manager_setup_cgroups_agent(m);
+         (void) manager_setup_user_lookup_fd(m);
+ 
++
+         /* Third, fire things up! */
++        log_info("syy into manager_coldplug from daemon reload");
+         manager_coldplug(m);
++        log_info("syy out manager_coldplug from daemon reload");
+ 
+         /* Clean up runtime objects no longer referenced */
+         manager_vacuum(m);
+@@ -3617,8 +3627,9 @@ int manager_reload(Manager *m) {
+          * enumeration. The flag should be always set correctly by the serialized data, but it may fail. So,
+          * let's always set the flag here for safety. */
+         m->honor_device_enumeration = true;
+-
++        log_info("syy into manager_ready");
+         manager_ready(m);
++        log_info("syy out manager_ready");
+ 
+         m->send_reloading_done = true;
+         return 0;
+diff --git a/src/core/mount.c b/src/core/mount.c
+index 414d9f1..edc4401 100644
+--- a/src/core/mount.c
++++ b/src/core/mount.c
+@@ -665,6 +665,7 @@ static void mount_set_state(Mount *m, MountState state) {
+ 
+         old_state = m->state;
+         m->state = state;
++        log_info("syy into mount_set_state, the old_state is %d, the state is %d",old_state,state);
+ 
+         if (!MOUNT_STATE_WITH_PROCESS(state)) {
+                 m->timer_event_source = sd_event_source_unref(m->timer_event_source);
+@@ -692,6 +693,7 @@ static int mount_coldplug(Unit *u) {
+                 new_state = m->deserialized_state;
+         else if (m->from_proc_self_mountinfo)
+                 new_state = MOUNT_MOUNTED;
++        log_info("syy into mount_coldplug, the m->deserialized_state is %d,the m->state is %d, the new_state is %d",m->deserialized_state,m->state,new_state);
+ 
+         if (new_state == m->state)
+                 return 0;
+@@ -822,6 +824,7 @@ static void mount_enter_dead(Mount *m, MountResult f) {
+                 m->result = f;
+ 
+         unit_log_result(UNIT(m), m->result == MOUNT_SUCCESS, mount_result_to_string(m->result));
++        log_info("syy into mount_set_state from mount_enter_dead");
+         mount_set_state(m, m->result != MOUNT_SUCCESS ? MOUNT_FAILED : MOUNT_DEAD);
+ 
+         m->exec_runtime = exec_runtime_unref(m->exec_runtime, true);
+@@ -841,7 +844,7 @@ static void mount_enter_mounted(Mount *m, MountResult f) {
+ 
+         if (m->result == MOUNT_SUCCESS)
+                 m->result = f;
+-
++        log_info("syy into mount_set_state from mount_enter_mounted");
+         mount_set_state(m, MOUNT_MOUNTED);
+ }
+ 
+@@ -896,7 +899,7 @@ static void mount_enter_signal(Mount *m, MountState state, MountResult f) {
+                 r = mount_arm_timer(m, usec_add(now(CLOCK_MONOTONIC), m->timeout_usec));
+                 if (r < 0)
+                         goto fail;
+-
++                log_info("syy into mount_set_state from mount_enter_signal");
+                 mount_set_state(m, state);
+         } else if (state == MOUNT_REMOUNTING_SIGTERM && m->kill_context.send_sigkill)
+                 mount_enter_signal(m, MOUNT_REMOUNTING_SIGKILL, MOUNT_SUCCESS);
+@@ -942,7 +945,7 @@ static void mount_enter_unmounting(Mount *m) {
+         r = mount_spawn(m, m->control_command, &m->control_pid);
+         if (r < 0)
+                 goto fail;
+-
++        log_info("syy into mount_set_state from mount_enter_unmounting");
+         mount_set_state(m, MOUNT_UNMOUNTING);
+ 
+         return;
+@@ -999,7 +1002,7 @@ static void mount_enter_mounting(Mount *m) {
+         r = mount_spawn(m, m->control_command, &m->control_pid);
+         if (r < 0)
+                 goto fail;
+-
++        log_info("syy into mount_set_state from mount_enter_mounting");
+         mount_set_state(m, MOUNT_MOUNTING);
+ 
+         return;
+@@ -1058,6 +1061,7 @@ static void mount_enter_remounting(Mount *m) {
+         if (r < 0)
+                 goto fail;
+ 
++        log_info("syy into mount_set_state from mount_enter_remounting");
+         mount_set_state(m, MOUNT_REMOUNTING);
+ 
+         return;
+@@ -1137,11 +1141,13 @@ static int mount_stop(Unit *u) {
+ 
+         case MOUNT_REMOUNTING_SIGTERM:
+                 /* If we are already waiting for a hung remount, convert this to the matching unmounting state */
++                log_info("syy into mount_set_state from mount_stop SIGTERM");
+                 mount_set_state(m, MOUNT_UNMOUNTING_SIGTERM);
+                 return 0;
+ 
+         case MOUNT_REMOUNTING_SIGKILL:
+                 /* as above */
++                log_info("syy into mount_set_state from mount_stop MOUNT_UNMOUNTING_SIGKILL");
+                 mount_set_state(m, MOUNT_UNMOUNTING_SIGKILL);
+                 return 0;
+ 
+@@ -1655,8 +1661,9 @@ static int mount_load_proc_self_mountinfo(Manager *m, bool set_flags) {
+ 
+                 if (!device || !path)
+                         continue;
+-
++                log_info("syy into device_found_node from mount_load_proc_self_mountinfo,the device is %s",device);
+                 device_found_node(m, device, DEVICE_FOUND_MOUNT, DEVICE_FOUND_MOUNT);
++                log_info("syy out device_found_node from mount_load_proc_self_mountinfo");
+ 
+                 (void) mount_setup_unit(m, device, path, options, fstype, set_flags);
+         }
+@@ -1723,6 +1730,7 @@ static bool mount_is_mounted(Mount *m) {
+ }
+ 
+ static void mount_enumerate(Manager *m) {
++        log_info("syy into mount_enumerate");
+         int r;
+ 
+         assert(m);
+@@ -1776,7 +1784,9 @@ static void mount_enumerate(Manager *m) {
+                 (void) sd_event_source_set_description(m->mount_event_source, "mount-monitor-dispatch");
+         }
+ 
++        log_info("syy from mount_enumerate into mount_load_proc_self_mountinfo");
+         r = mount_load_proc_self_mountinfo(m, false);
++        log_info("syy from mount_enumerate out mount_load_proc_self_mountinfo");
+         if (r < 0)
+                 goto fail;
+ 
+@@ -1882,6 +1892,7 @@ static int mount_process_proc_self_mountinfo(Manager *m) {
+                                 break;
+ 
+                         case MOUNT_MOUNTING:
++                                log_info("syy into from mount_set_state mount_process_proc_self_mountinfo MOUNT_MOUNTING");
+                                 mount_set_state(mount, MOUNT_MOUNTING_DONE);
+                                 break;
+ 
+@@ -1891,6 +1902,7 @@ static int mount_process_proc_self_mountinfo(Manager *m) {
+                                  * nonetheless, in case somebody is
+                                  * waiting for this. (e.g. file system
+                                  * ro/rw remounts.) */
++                                log_info("syy into from mount_set_state mount_process_proc_self_mountinfo default");
+                                 mount_set_state(mount, mount->state);
+                                 break;
+                         }
+@@ -1935,8 +1947,10 @@ static void mount_reset_failed(Unit *u) {
+ 
+         assert(m);
+ 
+-        if (m->state == MOUNT_FAILED)
++        if (m->state == MOUNT_FAILED) {
++                log_info("syy into mount_set_state from mount_reset_failed");
+                 mount_set_state(m, MOUNT_DEAD);
++        }
+ 
+         m->result = MOUNT_SUCCESS;
+         m->reload_result = MOUNT_SUCCESS;
+diff --git a/src/core/unit.c b/src/core/unit.c
+index 3ed6b53..f16f8fc 100644
+--- a/src/core/unit.c
++++ b/src/core/unit.c
+@@ -4024,6 +4024,7 @@ int unit_add_node_dependency(Unit *u, const char *what, bool wants, UnitDependen
+ int unit_coldplug(Unit *u) {
+         int r = 0, q;
+         char **i;
++        log_info("syy into unit_coldplug");
+ 
+         assert(u);
+ 
+-- 
+2.19.1
